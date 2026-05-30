@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="1b2bd4e3-9b00-49a9-a5b1-278968bb2a99" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/ResearchAgent.iml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/material_theme_project_new.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.streamlit/config.toml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Rag_learn.ipynb" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Readme.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/app.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/client.py" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="EmbeddingIndexingInfo">
+    <option name="cachedIndexableFilesCount" value="9" />
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Jupyter Notebook" />
+        <option value="Python Script" />
+      </list>
+    </option>
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="McpProjectServerCommands">
+    <commands />
+    <urls />
+  </component>
+  <component name="NextEditCompletionFeaturesState">
+    <decayedCancelled>
+      <entry key="MS100" value="6.513970203163385E-89" />
+      <entry key="MS500" value="2.9190706788901923E-18" />
+      <entry key="S2" value="6.732269203957119E-5" />
+      <entry key="S5" value="0.036003145212924234" />
+      <entry key="S10" value="0.3383714729607383" />
+      <entry key="S30" value="1.698376352027586" />
+      <entry key="S60" value="2.6030132129912382" />
+      <entry key="M2" value="3.457746816388701" />
+      <entry key="M5" value="5.477323092427518" />
+      <entry key="M10" value="7.388822293773097" />
+      <entry key="M15" value="8.344587441596804" />
+      <entry key="M30" value="9.53408950787718" />
+      <entry key="H1" value="11.341531529398807" />
+      <entry key="H2" value="29.330401413500237" />
+      <entry key="H4" value="91.14044604229167" />
+      <entry key="D1" value="395.82967182599396" />
+      <entry key="W1" value="863.2405887825586" />
+    </decayedCancelled>
+    <decayedSelected>
+      <entry key="MS100" value="1.0" />
+      <entry key="MS500" value="1.0000000000000013" />
+      <entry key="S2" value="1.0003662771636304" />
+      <entry key="S5" value="1.0901574553117988" />
+      <entry key="S10" value="1.5912733517279292" />
+      <entry key="S30" value="3.107009432818813" />
+      <entry key="S60" value="3.9016868530309257" />
+      <entry key="M2" value="4.406446008576167" />
+      <entry key="M5" value="4.750970286358241" />
+      <entry key="M10" value="4.873465026484467" />
+      <entry key="M15" value="4.915187887899437" />
+      <entry key="M30" value="4.957824937464189" />
+      <entry key="H1" value="5.110825654841128" />
+      <entry key="H2" value="7.505100110143623" />
+      <entry key="H4" value="16.687282897378672" />
+      <entry key="D1" value="83.78108242330754" />
+      <entry key="W1" value="198.5538259809778" />
+    </decayedSelected>
+    <decayedShown>
+      <entry key="MS100" value="0.03235202887004305" />
+      <entry key="MS500" value="0.5034777750283597" />
+      <entry key="S2" value="0.8426797425706228" />
+      <entry key="S5" value="1.0466281039747014" />
+      <entry key="S10" value="1.8490998717024993" />
+      <entry key="S30" value="4.735480720717166" />
+      <entry key="S60" value="6.458172801112385" />
+      <entry key="M2" value="7.837082466419278" />
+      <entry key="M5" value="10.21598859358566" />
+      <entry key="M10" value="12.255689492014808" />
+      <entry key="M15" value="13.255242539461033" />
+      <entry key="M30" value="14.489566931041349" />
+      <entry key="H1" value="16.451009989085392" />
+      <entry key="H2" value="36.833595937706036" />
+      <entry key="H4" value="107.82463119536482" />
+      <entry key="D1" value="479.60836928639435" />
+      <entry key="W1" value="1061.7936175237319" />
+    </decayedShown>
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 4
+}</component>
+  <component name="ProjectId" id="3Df1POcpTRttOjdAFZEa7XisDZc" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "Python.Rag_learn.executor": "Run",
+    "Python.client.executor": "Run",
+    "RunOnceActivity.MCP Project settings loaded": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
+    "SHARE_PROJECT_CONFIGURATION_FILES": "true",
+    "ai.playground.ignore.import.keys.banner.in.settings": "true",
+    "codeWithMe.voiceChat.enabledByDefault": "false",
+    "com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1": "true",
+    "git-widget-placeholder": "master",
+    "junie.onboarding.icon.badge.shown": "true",
+    "last_opened_file_path": "/home/samarth/dev/ResearchAgent",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "settings.editor.selected.configurable": "reference.settingsdialog.IDE.editor.colors.Color Scheme Font",
+    "to.speed.mode.migration.done": "true",
+    "vue.rearranger.settings.migration": "true"
+  }
+}]]></component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-js-predefined-d6986cc7102b-31caf2ab9e3c-JavaScript-PY-261.24374.152" />
+        <option value="bundled-python-sdk-c59985aa861c-c2ffad84badb-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-261.24374.152" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="1b2bd4e3-9b00-49a9-a5b1-278968bb2a99" name="Changes" comment="" />
+      <created>1778658284493</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1778658284493</updated>
+      <workItem from="1778658285542" duration="733000" />
+      <workItem from="1778659036532" duration="6432000" />
+      <workItem from="1778744603890" duration="1408000" />
+      <workItem from="1778958341442" duration="622000" />
+      <workItem from="1778959212766" duration="19697000" />
+      <workItem from="1779873065617" duration="2821000" />
+      <workItem from="1779961608991" duration="975000" />
+      <workItem from="1779999482864" duration="6339000" />
+      <workItem from="1780053149947" duration="15332000" />
+    </task>
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+  <component name="com.intellij.coverage.CoverageDataManagerImpl">
+    <SUITE FILE_PATH="coverage/ResearchAgent$Rag_learn.coverage" NAME="Rag_learn Coverage Results" MODIFIED="1780143586757" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/ResearchAgent$client.coverage" NAME="client Coverage Results" MODIFIED="1780136997849" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+  </component>
+</project>
