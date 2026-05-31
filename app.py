@@ -2,13 +2,20 @@ import streamlit as st
 from sentence_transformers import SentenceTransformer
 import numpy
 import hashlib
+import arxiv
 import time
 from openai import OpenAI
 import os
 import xml.etree.ElementTree as ET
 import requests
 import numpy as np
+
 groq_key = os.environ.get("GROQ_API_KEY", "")
+if groq_key == "":
+    try:
+        from keys import groq_key
+    except Exception as e:
+        print("Please set GROQ_API_KEY environment variable")
 # ── Page Config ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="ArXiv Research Agent",
@@ -163,14 +170,17 @@ html, body, [class*="css"] { font-family: 'Outfit', sans-serif; }
 def load_embed_model():
     return SentenceTransformer('all-MiniLM-L6-v2')
 
-@st.cache_resource(show_spinner="Setting up vector store...")
-def load_vector_store():
-    return VectorStore()
+if "perm_store" not in st.session_state:
+    st.session_state.perm_store = VectorStore()  # grows forever, all papers
+if "temp_store" not in st.session_state:
+    st.session_state.temp_store = VectorStore()  # cleared each question
+if "query_cache" not in st.session_state:
+    st.session_state.query_cache = {}
 
-
-
+perm_store = st.session_state.perm_store
+temp_store = st.session_state.temp_store
 embed_model = load_embed_model()
-store = load_vector_store()
+query_cache = st.session_state.query_cache
 # ── LLM Helper ────────────────────────────────────────────────────────────────
 def get_llm():
     return OpenAI(api_key=groq_key, base_url="https://api.groq.com/openai/v1")
@@ -183,10 +193,9 @@ def ask(prompt):
     )
     return resp.choices[0].message.content
 
-query_cache = {}  # in-memory cache
 # ── RAG Pipeline ──────────────────────────────────────────────────────────────
 
-def get_papers(query, max_results=5):
+def get_papers(query,original_question, max_results=5):
     if query in query_cache:
         return query_cache[query]
 
@@ -202,10 +211,12 @@ def get_papers(query, max_results=5):
             }, headers=headers, timeout=30)
 
             if resp.status_code == 200:
-                break
+                return []
             elif resp.status_code == 429:
                 wait = 15 * (attempt + 1)
                 print(f"Rate limited, waiting {wait}s...")
+                st.write("Rate limited, waiting... try again after an hour")
+                return []
                 time.sleep(wait)
         except Exception as e:
             time.sleep(10)
@@ -215,6 +226,7 @@ def get_papers(query, max_results=5):
     ns = {"atom": "http://www.w3.org/2005/Atom"}
     papers = []
     for paper in root.findall("atom:entry", ns):
+
         pdf_url = ""
         for link in paper.findall("atom:link", ns):
             if link.get("type") == "application/pdf":
@@ -226,24 +238,32 @@ def get_papers(query, max_results=5):
         categories = [c.get("term") for c in paper.findall("atom:category", ns)]
         papers.append({"title": title, "summary": summary, "authors": authors, "category": categories,"link":pdf_url})
 
-    query_cache[query] = papers  # store result
+    question_vec = np.array(embed_model.encode(original_question))
+    relevant = []
+    for p in papers:
+        paper_vec = np.array(embed_model.encode(p['title'] + ". " + p['summary'][:300]))
+        score = np.dot(question_vec, paper_vec) / (np.linalg.norm(question_vec) * np.linalg.norm(paper_vec))
+        if score > 0.25:  # tune this threshold
+            relevant.append(p)
+
+    query_cache[query] = relevant
     return papers
 
-def indexing(topic, max_results=3):
+def indexing(topic,question,max_results=3):
     # query = query_construct(topic)
-    papers = get_papers(topic, max_results)
+    papers = get_papers(topic,question,max_results)
     saved = 0
     for p in papers:
         uid = hashlib.md5(p['title'].encode()).hexdigest()
         try:
-            if store.get(ids=[uid])['ids']:
+            if temp_store.get(ids=[uid])['ids']:
                 continue
         except Exception:
             pass
         small = distill(p['summary'])
         full_text = f"{p['title']}. {p['summary']}"
         embedding = embed_model.encode(small).tolist()
-        store.add(
+        temp_store.add(
             documents=[full_text],
             embeddings=[embedding],
             metadatas=[{
@@ -254,16 +274,18 @@ def indexing(topic, max_results=3):
             }],
             ids=[uid]
         )
-        saved += 1
+        if not perm_store.get(ids=[uid])['ids']:
+            perm_store.add(documents=[full_text], embeddings=[embedding], metadatas=[meta], ids=[uid])
+            saved += 1
     st.write(f"Stored {saved} new papers in store.")
 
 def retrival(query, n_res=5):
-    count = store.count()
+    count = temp_store.count()
     if count == 0:
         return []
     n_res = min(n_res, count)
     embedded = embed_model.encode(query).tolist()
-    res = store.query(query_embeddings=[embedded], n_results=n_res)
+    res = temp_store.query(query_embeddings=[embedded], n_results=n_res)
     docs = res['documents'][0]
     titles = [m["title"] for m in res['metadatas'][0]]
     links = [m.get("link", "") for m in res['metadatas'][0]]  # add this
@@ -319,7 +341,7 @@ def fusion_retrival(question, n=3):
     queries = multi_query_generation(question,n)
     all_context = []
     for query in queries:
-        indexing(query)
+        indexing(query,question)
         retrieved = retrival(query)
         temp = []
         for title, doc,link in retrieved:
@@ -378,9 +400,10 @@ with st.sidebar:
     with col2:
         if st.button("🗑️ Clear chat", use_container_width=True):
             st.session_state.messages = []
+            st.session_state.total_queries = 0
             st.rerun()
 
-    all_papers = store.get(include=["metadatas", "documents"])
+    all_papers = perm_store.get(include=["metadatas", "documents"])
     paper_count = len(all_papers["ids"]) if all_papers["ids"] else 0
 
     st.markdown(f"""
@@ -492,6 +515,9 @@ if question:
     if False:
         st.error("⚠️ Please enter your Groq API key in the sidebar first.")
     else:
+        st.session_state.temp_store = VectorStore()
+        temp_store = st.session_state.temp_store
+        query_cache.clear()
         st.session_state.messages.append({"role": "user", "content": question})
         st.session_state.total_queries += 1
         st.markdown(f'<div class="user-msg">💻&nbsp;&nbsp;{question}</div>', unsafe_allow_html=True)
