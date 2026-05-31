@@ -5,7 +5,8 @@ import chromadb
 import hashlib
 import time
 from openai import OpenAI
-from keys import groq_key
+import os
+groq_key = os.environ.get("GROQ_API_KEY", "")
 # ── Page Config ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="ArXiv Research Agent",
