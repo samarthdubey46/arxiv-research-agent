@@ -1,4 +1,5 @@
 # ⚗️ ArXiv Research Agent
+https://arxiv-research-agentt.streamlit.app/
 
 A research assistant that answers questions using real academic papers from arXiv — not just what the LLM already knows.
 
@@ -7,7 +8,6 @@ Built with RAG Fusion, CRAG, multi-query translation, and multi-representation i
 ---
 
 ## Demo
-
 > *"How is machine learning used in drug discovery?"*
 
 ![demo](assets/demo.gif)
