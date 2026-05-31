@@ -9,7 +9,7 @@ import os
 import xml.etree.ElementTree as ET
 import requests
 import numpy as np
-
+import random
 groq_key = os.environ.get("GROQ_API_KEY", "")
 if groq_key == "":
     try:
@@ -172,13 +172,11 @@ def load_embed_model():
 
 if "perm_store" not in st.session_state:
     st.session_state.perm_store = VectorStore()  # grows forever, all papers
-if "temp_store" not in st.session_state:
-    st.session_state.temp_store = VectorStore()  # cleared each question
 if "query_cache" not in st.session_state:
     st.session_state.query_cache = {}
 
 perm_store = st.session_state.perm_store
-temp_store = st.session_state.temp_store
+temp_store = perm_store
 embed_model = load_embed_model()
 query_cache = st.session_state.query_cache
 # ── LLM Helper ────────────────────────────────────────────────────────────────
@@ -200,7 +198,8 @@ def get_papers(query,original_question, max_results=5):
         return query_cache[query]
 
     url = 'https://export.arxiv.org/api/query'
-    headers = {"User-Agent": "ResearchAgent/1.0 (samarthdubey46@gmail.com)"}
+    num = random.randint(1,90)
+    headers = {"User-Agent": f"ResearchAgent/1.0 (user{str(num)}@gmail.com)"}
 
     for attempt in range(1):
         try:
@@ -211,11 +210,14 @@ def get_papers(query,original_question, max_results=5):
             }, headers=headers, timeout=30)
 
             if resp.status_code == 200:
+                print("No resp from api")
                 return []
+
             elif resp.status_code == 429:
                 wait = 15 * (attempt + 1)
                 print(f"Rate limited, waiting {wait}s...")
                 st.write("Rate limited, waiting... try again after an hour")
+                print("No resp from api")
                 return []
                 time.sleep(wait)
         except Exception as e:
@@ -238,15 +240,15 @@ def get_papers(query,original_question, max_results=5):
         categories = [c.get("term") for c in paper.findall("atom:category", ns)]
         papers.append({"title": title, "summary": summary, "authors": authors, "category": categories,"link":pdf_url})
 
-    question_vec = np.array(embed_model.encode(original_question))
-    relevant = []
-    for p in papers:
-        paper_vec = np.array(embed_model.encode(p['title'] + ". " + p['summary'][:300]))
-        score = np.dot(question_vec, paper_vec) / (np.linalg.norm(question_vec) * np.linalg.norm(paper_vec))
-        if score > 0.25:  # tune this threshold
-            relevant.append(p)
+    # question_vec = np.array(embed_model.encode(original_question))
+    # relevant = []
+    # for p in papers:
+    #     paper_vec = np.array(embed_model.encode(p['title'] + ". " + p['summary'][:300]))
+    #     score = np.dot(question_vec, paper_vec) / (np.linalg.norm(question_vec) * np.linalg.norm(paper_vec))
+    #     if score > 0.25:  # tune this threshold
+    #         relevant.append(p)
 
-    query_cache[query] = relevant
+    query_cache[query] = papers
     return papers
 
 def indexing(topic,question,max_results=3):
@@ -274,9 +276,7 @@ def indexing(topic,question,max_results=3):
             }],
             ids=[uid]
         )
-        if not perm_store.get(ids=[uid])['ids']:
-            perm_store.add(documents=[full_text], embeddings=[embedding], metadatas=[meta], ids=[uid])
-            saved += 1
+        saved += 1
     st.write(f"Stored {saved} new papers in store.")
 
 def retrival(query, n_res=5):
@@ -515,9 +515,9 @@ if question:
     if False:
         st.error("⚠️ Please enter your Groq API key in the sidebar first.")
     else:
-        st.session_state.temp_store = VectorStore()
-        temp_store = st.session_state.temp_store
-        query_cache.clear()
+        # st.session_state.temp_store = VectorStore()
+        # temp_store = st.session_state.temp_store
+        # query_cache.clear()
         st.session_state.messages.append({"role": "user", "content": question})
         st.session_state.total_queries += 1
         st.markdown(f'<div class="user-msg">💻&nbsp;&nbsp;{question}</div>', unsafe_allow_html=True)
