@@ -1,12 +1,14 @@
 import streamlit as st
 import arxiv
 from sentence_transformers import SentenceTransformer
-import chromadb
+import numpy
 import hashlib
 import time
 from openai import OpenAI
 import os
-groq_key = os.environ.get("GROQ_API_KEY", "")
+import numpy as np
+from keys import groq_key
+# groq_key = os.environ.get("GROQ_API_KEY", "")
 # ── Page Config ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="ArXiv Research Agent",
@@ -16,6 +18,47 @@ st.set_page_config(
 )
 
 LLM_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+
+
+# simple in-memory vector store
+class VectorStore:
+    def __init__(self):
+        self.documents = []
+        self.embeddings = []
+        self.metadatas = []
+        self.ids = []
+
+    def add(self, documents, embeddings, metadatas, ids):
+        for doc, emb, meta, uid in zip(documents, embeddings, metadatas, ids):
+            if uid not in self.ids:
+                self.documents.append(doc)
+                self.embeddings.append(emb)
+                self.metadatas.append(meta)
+                self.ids.append(uid)
+
+    def query(self, query_embeddings, n_results=5):
+        if not self.embeddings:
+            return {"documents": [[]], "metadatas": [[]]}
+        q = np.array(query_embeddings[0])
+        matrix = np.array(self.embeddings)
+        # cosine similarity
+        scores = matrix @ q / (np.linalg.norm(matrix, axis=1) * np.linalg.norm(q) + 1e-9)
+        top_n = min(n_results, len(scores))
+        top_idx = np.argsort(scores)[::-1][:top_n]
+        return {
+            "documents": [[self.documents[i] for i in top_idx]],
+            "metadatas": [[self.metadatas[i] for i in top_idx]]
+        }
+
+    def get(self, include=None, ids=None):
+        if ids:
+            return {"ids": [i for i in ids if i in self.ids]}
+        return {"ids": self.ids, "metadatas": self.metadatas}
+
+    def count(self):
+        return len(self.ids)
+
+
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
 st.markdown("""
@@ -122,8 +165,7 @@ def load_embed_model():
 
 @st.cache_resource(show_spinner="Setting up vector store...")
 def load_vector_store():
-    chroma = chromadb.EphemeralClient()
-    return chroma.get_or_create_collection("papers")
+    return VectorStore()
 
 @st.cache_resource(show_spinner="Setting up Arxiv Client...")
 def load_arxivclient():
@@ -240,9 +282,8 @@ def retrival(query, n_res=5):
     embedded = embed_model.encode(query).tolist()
     res = store.query(query_embeddings=[embedded], n_results=n_res)
     docs = res['documents'][0]
-    ids = res['ids'][0]
     titles = [m["title"] for m in res['metadatas'][0]]
-    return list(zip(titles, docs,ids))
+    return list(zip(titles, docs))
 
 def query_construct(question):
     prompt = f"""
@@ -305,12 +346,12 @@ def fusion_retrival(question, n=3):
         indexing(query)
         retrieved = retrival(query)
         temp = []
-        for title, doc,id in retrieved:
+        for title, doc in retrieved:
             relevance = grade(question, doc)
             if relevance == 1:
-                temp.append((title, doc,id))
+                temp.append((title, doc))
             elif relevance == 2:
-                temp.append((title, distill(doc),id))
+                temp.append((title, distill(doc)))
         all_context.append(temp)
     ranked = reciprocal_rank_fusion(all_context)
     return ranked[:n]
