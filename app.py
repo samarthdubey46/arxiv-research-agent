@@ -8,8 +8,7 @@ import os
 import xml.etree.ElementTree as ET
 import requests
 import numpy as np
-from keys import groq_key
-# groq_key = os.environ.get("GROQ_API_KEY", "")
+groq_key = os.environ.get("GROQ_API_KEY", "")
 # ── Page Config ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="ArXiv Research Agent",
