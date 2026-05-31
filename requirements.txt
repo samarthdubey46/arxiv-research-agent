@@ -1,5 +1,5 @@
 streamlit~=1.58.0
-arxiv~=4.0.0
+numpy~=2.4.4
+requests~=2.33.1
 sentence-transformers~=5.5.0
 openai~=2.36.0
-numpy

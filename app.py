@@ -1,13 +1,15 @@
 import streamlit as st
-import arxiv
 from sentence_transformers import SentenceTransformer
 import numpy
 import hashlib
 import time
 from openai import OpenAI
 import os
+import xml.etree.ElementTree as ET
+import requests
 import numpy as np
-groq_key = os.environ.get("GROQ_API_KEY", "")
+from keys import groq_key
+# groq_key = os.environ.get("GROQ_API_KEY", "")
 # ── Page Config ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="ArXiv Research Agent",
@@ -166,16 +168,10 @@ def load_embed_model():
 def load_vector_store():
     return VectorStore()
 
-@st.cache_resource(show_spinner="Setting up Arxiv Client...")
-def load_arxivclient():
-    return arxiv.Client(
-    delay_seconds=10,
-    num_retries=3
-    )
+
 
 embed_model = load_embed_model()
 store = load_vector_store()
-arxClient = load_arxivclient()
 # ── LLM Helper ────────────────────────────────────────────────────────────────
 def get_llm():
     return OpenAI(api_key=groq_key, base_url="https://api.groq.com/openai/v1")
@@ -188,66 +184,55 @@ def ask(prompt):
     )
     return resp.choices[0].message.content
 
+query_cache = {}  # in-memory cache
 # ── RAG Pipeline ──────────────────────────────────────────────────────────────
+
 def get_papers(query, max_results=5):
+    if query in query_cache:
+        return query_cache[query]
+
     url = 'https://export.arxiv.org/api/query'
-    search = arxiv.Search(
-        query=query,
-        max_results=3,
-        sort_by=arxiv.SortCriterion.Relevance
-    )
-    time.sleep(4)
+    headers = {"User-Agent": "ResearchAgent/1.0 (samarthdubey46@gmail.com)"}
+
+    for attempt in range(1):
+        try:
+            resp = requests.get(url, params={
+                "search_query": query,
+                "max_results": max_results,
+                "sortBy": "relevance"
+            }, headers=headers, timeout=30)
+
+            if resp.status_code == 200:
+                break
+            elif resp.status_code == 429:
+                wait = 15 * (attempt + 1)
+                print(f"Rate limited, waiting {wait}s...")
+                time.sleep(wait)
+        except Exception as e:
+            time.sleep(10)
+
+    time.sleep(2)
+    root = ET.fromstring(resp.text)
+    ns = {"atom": "http://www.w3.org/2005/Atom"}
     papers = []
-    for paper in arxClient.results(search):
-        title = paper.title
-        sum = paper.summary
-        authors = [i.name for i in paper.authors]
-        category = paper.categories
-        link = paper.links[1]
-        papers.append({"title": title, "summary": sum, "authors": authors,"category":category,"link":str(link)})
+    for paper in root.findall("atom:entry", ns):
+        pdf_url = ""
+        for link in paper.findall("atom:link", ns):
+            if link.get("type") == "application/pdf":
+                pdf_url = link.get("href")
+                break
+        title = paper.find("atom:title", ns).text.strip()
+        summary = paper.find("atom:summary", ns).text.strip()
+        authors = [a.find("atom:name", ns).text for a in paper.findall("atom:author", ns)]
+        categories = [c.get("term") for c in paper.findall("atom:category", ns)]
+        papers.append({"title": title, "summary": summary, "authors": authors, "category": categories,"link":pdf_url})
+
+    query_cache[query] = papers  # store result
     return papers
 
-# Paste this at the top of your script / notebook, then call generation() normally
-
-def get_papers_demo(query, max_results=5):
-    return [
-        {
-            "title": "Wave-Particle Duality and the Double-Slit Experiment",
-            "summary": "We examine the double-slit experiment as the canonical demonstration of quantum superposition. When both slits are open, the wavefunction passes through both simultaneously and interferes with itself, producing an interference pattern on the screen. This pattern is not the sum of two single-slit diffraction patterns because the cross-terms in |ψ1 + ψ2|² — the interference terms — are non-zero. Closing one slit destroys the superposition and eliminates these cross-terms, recovering classical addition of intensities.",
-            "authors": ["Richard Feynman", "Albert Hibbs"],
-            "category": ["quant-ph", "physics.optics"],
-            "link": "https://arxiv.org/abs/quant-ph/0001001",
-            "published": "2001-03-15",
-        },
-        {
-            "title": "Quantum Interference and the Failure of Classical Probability",
-            "summary": "Classical probability predicts that the probability of an event through two paths is the sum of individual probabilities: P = P1 + P2. Quantum mechanics replaces probabilities with probability amplitudes (complex numbers), so P = |A1 + A2|² = |A1|² + |A2|² + 2Re(A1*A2). The third term, 2Re(A1*A2), is the interference term and has no classical analogue. In the double-slit experiment this term produces bright and dark fringes. When only one slit is open, A2=0 and the interference term vanishes, giving simple single-slit diffraction with no fringes.",
-            "authors": ["Paul Dirac", "John von Neumann"],
-            "category": ["quant-ph"],
-            "link": "https://arxiv.org/abs/quant-ph/0002002",
-            "published": "2003-07-22",
-        },
-        {
-            "title": "Path Integrals and Multi-Slit Interference",
-            "summary": "Using Feynman's path integral formulation, every path a particle can take contributes a complex amplitude e^(iS/ℏ) where S is the classical action. In the double-slit setup, paths through slit 1 and paths through slit 2 have different path lengths and therefore different phases. Summing amplitudes before squaring — not squaring before summing — is what produces interference. When which-path information is available (even in principle), the cross-terms average to zero and the pattern collapses to a classical sum, demonstrating the role of quantum coherence.",
-            "authors": ["Murray Gell-Mann", "James Hartle"],
-            "category": ["quant-ph", "physics.gen-ph"],
-            "link": "https://arxiv.org/abs/quant-ph/0003003",
-            "published": "2005-11-10",
-        },
-        {
-            "title": "Decoherence and the Quantum-to-Classical Transition in Slit Experiments",
-            "summary": "Decoherence theory explains why macroscopic objects do not show double-slit interference even though they obey quantum mechanics. When the environment (air molecules, photons) entangles with the particle and records which-path information, the off-diagonal elements of the density matrix — precisely the interference terms — decay exponentially fast. The resulting mixed state produces an intensity pattern indistinguishable from classical P = P1 + P2. This framework unifies the quantum measurement problem with the observed classical behaviour of large objects.",
-            "authors": ["Wojciech Zurek", "Erich Joos"],
-            "category": ["quant-ph", "cond-mat.mes-hall"],
-            "link": "https://arxiv.org/abs/quant-ph/0004004",
-            "published": "2008-02-28",
-        },
-    ]
-
 def indexing(topic, max_results=3):
-    query = query_construct(topic)
-    papers = get_papers(query, max_results)
+    # query = query_construct(topic)
+    papers = get_papers(topic, max_results)
     saved = 0
     for p in papers:
         uid = hashlib.md5(p['title'].encode()).hexdigest()
@@ -282,23 +267,9 @@ def retrival(query, n_res=5):
     res = store.query(query_embeddings=[embedded], n_results=n_res)
     docs = res['documents'][0]
     titles = [m["title"] for m in res['metadatas'][0]]
-    return list(zip(titles, docs))
+    links = [m.get("link", "") for m in res['metadatas'][0]]  # add this
 
-def query_construct(question):
-    prompt = f"""
-    You are an AI research assistant. Given a question, generate the best possible query to search for the arxiv api for the question : {question}
-    ti:	Title
-    au:	Author
-    abs:	Abstract
-    co	:Comment
-    jr	:Journal Reference
-    cat	:Subject Category;
-    Use Boolean logic, synonyms, field prefixes mentioned above, and relevant categories with `cat:`. Prefer precision over noise. Only output the search query, an example of the query for question anti-gravity is
-    (ti:antigravity OR ti:"anti-gravity" OR abs:antigravity OR abs:"anti-gravity" OR all:antigravity OR all:"anti-gravity" OR all:"repulsive gravity" OR all:"negative mass") AND (cat:physics.gen-ph OR cat:gr-qc OR cat:physics.class-ph)
-    and only output the query nothing else
-    """
-    resp = ask(prompt)
-    return resp
+    return list(zip(titles, docs,links))
 
 def multi_query_generation(question, n=3):
     prompt = f"""You are an AI research assistant. Given a question, generate {n} different
@@ -315,10 +286,17 @@ def multi_query_generation(question, n=3):
     return queries
 
 def grade(question, doc):
-    prompt = f"""Grade relevance of this research paper to the question.
+    prompt = f"""You are grading whether a research paper DIRECTLY answers a question.
+
     Question: {question}
     Document: {doc[:400]}
-    Return ONLY a single digit — 1 (relevant), 2 (partial), or 3 (irrelevant)."""
+
+    Grade strictly:
+    1 - Paper directly and specifically addresses the question
+    2 - Paper is loosely related but doesn't directly answer it  
+    3 - Paper is irrelevant or only tangentially related
+
+    Return ONLY the digit 1, 2, or 3."""
     try:
         result = ask(prompt).strip().strip('.')[0]
         return int(result)
@@ -345,12 +323,12 @@ def fusion_retrival(question, n=3):
         indexing(query)
         retrieved = retrival(query)
         temp = []
-        for title, doc in retrieved:
+        for title, doc,link in retrieved:
             relevance = grade(question, doc)
             if relevance == 1:
-                temp.append((title, doc))
+                temp.append((title, doc,link))
             elif relevance == 2:
-                temp.append((title, distill(doc)))
+                temp.append((title, distill(doc),link))
         all_context.append(temp)
     ranked = reciprocal_rank_fusion(all_context)
     return ranked[:n]
@@ -361,8 +339,8 @@ def generation(question):
     context_parts = []
     for item in results:
         if isinstance(item, tuple) and len(item) == 3:
-            title, doc,id = item
-            sources.append((title,id))
+            title, doc,link = item
+            sources.append((title,link))
             context_parts.append(f"[{title}]:\n{doc}")
         else:
             context_parts.append(str(item))
@@ -485,11 +463,14 @@ for msg in st.session_state.messages:
         if sources:
             seen = set()
             chips = ""
-            for s in sources:
+            for s,link in sources:
                 if s not in seen:
                     seen.add(s)
                     label = s[:55] + "..." if len(s) > 55 else s
-                    chips += f'<span class="source-chip">📄 {label[0]}</span>'
+                    if link:
+                        chips += f'<a href="{link}" target="_blank" style="text-decoration:none"><span class="source-chip">📄 {label}</span></a>'
+                    else:
+                        chips += f'<span class="source-chip">📄 {label}</span>'
             st.markdown(f'<div class="source-row">{chips}</div>', unsafe_allow_html=True)
 
 # Empty state
