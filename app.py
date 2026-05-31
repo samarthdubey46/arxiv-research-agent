@@ -192,61 +192,61 @@ def ask(prompt):
     return resp.choices[0].message.content
 
 # ── RAG Pipeline ──────────────────────────────────────────────────────────────
-
-def get_papers(query,original_question, max_results=5):
+def get_papers(query, original_question, max_results=5):
     if query in query_cache:
         return query_cache[query]
 
-    url = 'https://export.arxiv.org/api/query'
-    num = random.randint(1,90)
-    headers = {"User-Agent": f"ResearchAgent/1.0 (user{str(num)}@gmail.com)"}
+    resp = requests.get("https://api.openalex.org/works", params={
+        "search": query,
+        "per-page": max_results,
+        "select": "title,abstract_inverted_index,authorships,publication_year,open_access,cited_by_count,primary_location"
+    }, headers={"User-Agent": "ResearchAgent/1.0 (samarthdubey46@gmail.com)"}, timeout=30)
 
-    for attempt in range(1):
-        try:
-            resp = requests.get(url, params={
-                "search_query": query,
-                "max_results": max_results,
-                "sortBy": "relevance"
-            }, headers=headers, timeout=30)
+    time.sleep(0.5)
+    data = resp.json()
+    results = data.get("results", [])
 
-            if resp.status_code == 200:
-                print("No resp from api")
-                return []
-
-            elif resp.status_code == 429:
-                wait = 15 * (attempt + 1)
-                print(f"Rate limited, waiting {wait}s...")
-                st.write("Rate limited, waiting... try again after an hour")
-                print("No resp from api")
-                return []
-                time.sleep(wait)
-        except Exception as e:
-            time.sleep(10)
-
-    time.sleep(2)
-    root = ET.fromstring(resp.text)
-    ns = {"atom": "http://www.w3.org/2005/Atom"}
+    question_vec = np.array(embed_model.encode(original_question))
     papers = []
-    for paper in root.findall("atom:entry", ns):
 
+    for p in results:
+        title = p.get("title") or ""
+
+        # OpenAlex stores abstracts as inverted index — reconstruct it
+        inv = p.get("abstract_inverted_index") or {}
+        if not inv:
+            continue
+        words = [""] * (max(max(v) for v in inv.values()) + 1)
+        for word, positions in inv.items():
+            for pos in positions:
+                words[pos] = word
+        abstract = " ".join(words)
+
+        authors = [a["author"]["display_name"] for a in p.get("authorships", [])[:3]]
+        year = p.get("publication_year", "")
+        citations = p.get("cited_by_count", 0)
+
+        # PDF link
         pdf_url = ""
-        for link in paper.findall("atom:link", ns):
-            if link.get("type") == "application/pdf":
-                pdf_url = link.get("href")
-                break
-        title = paper.find("atom:title", ns).text.strip()
-        summary = paper.find("atom:summary", ns).text.strip()
-        authors = [a.find("atom:name", ns).text for a in paper.findall("atom:author", ns)]
-        categories = [c.get("term") for c in paper.findall("atom:category", ns)]
-        papers.append({"title": title, "summary": summary, "authors": authors, "category": categories,"link":pdf_url})
+        oa = p.get("open_access", {})
+        if oa.get("is_oa"):
+            pdf_url = oa.get("oa_url") or ""
 
-    # question_vec = np.array(embed_model.encode(original_question))
-    # relevant = []
-    # for p in papers:
-    #     paper_vec = np.array(embed_model.encode(p['title'] + ". " + p['summary'][:300]))
-    #     score = np.dot(question_vec, paper_vec) / (np.linalg.norm(question_vec) * np.linalg.norm(paper_vec))
-    #     if score > 0.25:  # tune this threshold
-    #         relevant.append(p)
+        # cosine similarity filter
+        paper_vec = np.array(embed_model.encode(f"{title}. {abstract[:300]}"))
+        score = np.dot(question_vec, paper_vec) / (
+            np.linalg.norm(question_vec) * np.linalg.norm(paper_vec) + 1e-9
+        )
+
+        if score > 0.25:
+            papers.append({
+                "title": title,
+                "summary": abstract,
+                "authors": authors,
+                "year": year,
+                "citations": citations,
+                "link": pdf_url
+            })
 
     query_cache[query] = papers
     return papers
@@ -271,7 +271,8 @@ def indexing(topic,question,max_results=3):
             metadatas=[{
                 "title": p["title"],
                 "authors": ", ".join(p["authors"][:3]),
-                "category": ", ".join(p["category"][:2]),
+                "citations": str(p.get("citations", 0)),
+                "year": str(p.get("year", "")),
                 "link" : p['link']
             }],
             ids=[uid]
@@ -427,21 +428,21 @@ with st.sidebar:
         for meta in all_papers["metadatas"]:
             title = meta.get("title", "Unknown")
             authors = meta.get("authors", "")
-            category = meta.get("category", "")
+            year = meta.get("year", "")
+            citations = meta.get("citations", "0")
             link = meta.get("link","")
             if search_filter and search_filter.lower() not in title.lower():
                 continue
 
             short_authors = authors[:45] + "..." if len(authors) > 45 else authors
-            cats = [c.strip() for c in category.split(",") if c.strip()]
-            cat_chips = "".join([f'<span class="paper-cat">{c}</span> ' for c in cats[:2]])
 
             st.markdown(f"""
                 <a href="{link}" target="_blank" rel="noopener noreferrer" style="text-decoration:none; color:inherit;">
                 <div class="paper-card" >
                     <div class="paper-title">{title}</div>
                     <div class="paper-authors">{short_authors}</div>
-                    <div style="margin-top:5px">{cat_chips}</div>
+                    <span class="paper-cat">{year}</span>
+                    <span class="paper-cat">⭐ {citations} citations</span>
                 </div>
                 </a>
             """, unsafe_allow_html=True)
