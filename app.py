@@ -7,8 +7,7 @@ import time
 from openai import OpenAI
 import os
 import numpy as np
-from keys import groq_key
-# groq_key = os.environ.get("GROQ_API_KEY", "")
+groq_key = os.environ.get("GROQ_API_KEY", "")
 # ── Page Config ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="ArXiv Research Agent",
