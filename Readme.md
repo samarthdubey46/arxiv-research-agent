@@ -58,8 +58,8 @@ Cited answer generation  ──  Llama 4 answers from top-ranked paper context
 |---|---|
 | LLM | Llama 4 Scout via Groq (free) |
 | Embeddings | `sentence-transformers` (local, free) |
-| Vector store | ChromaDB |
-| Paper source | arXiv API |
+| Vector store | Numpy |
+| Paper source | OpenAlex API |
 | UI | Streamlit |
 
 ---
