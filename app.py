@@ -2,7 +2,6 @@ import streamlit as st
 from sentence_transformers import SentenceTransformer
 import numpy
 import hashlib
-import arxiv
 import time
 from openai import OpenAI
 import os
@@ -18,7 +17,7 @@ if groq_key == "":
         print("Please set GROQ_API_KEY environment variable")
 # ── Page Config ───────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="ArXiv Research Agent",
+    page_title="Research Agent",
     page_icon="⚗️",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -106,7 +105,6 @@ html, body, [class*="css"] { font-family: 'Outfit', sans-serif; }
     color: #9b8de8;
     margin: 3px 4px 3px 0;
     font-family: 'Space Mono', monospace;
-    cursor: default;
 }
 .paper-card {
     background: #111120;
@@ -171,12 +169,14 @@ def load_embed_model():
     return SentenceTransformer('all-MiniLM-L6-v2')
 
 if "perm_store" not in st.session_state:
-    st.session_state.perm_store = VectorStore()  # grows forever, all papers
+    st.session_state.perm_store = VectorStore()
+if "temp_store" not in st.session_state:
+    st.session_state.temp_store = VectorStore()
 if "query_cache" not in st.session_state:
     st.session_state.query_cache = {}
 
 perm_store = st.session_state.perm_store
-temp_store = perm_store
+temp_store = st.session_state.perm_store
 embed_model = load_embed_model()
 query_cache = st.session_state.query_cache
 # ── LLM Helper ────────────────────────────────────────────────────────────────
@@ -231,6 +231,12 @@ def get_papers(query, original_question, max_results=5):
         oa = p.get("open_access", {})
         if oa.get("is_oa"):
             pdf_url = oa.get("oa_url") or ""
+        if not pdf_url:
+            primary = p.get("primary_location") or {}
+            pdf_url = primary.get("landing_page_url") or ""
+        if not pdf_url:
+            work_id = p.get("id", "")  # looks like https://openalex.org/W123456
+            pdf_url = work_id
 
         # cosine similarity filter
         paper_vec = np.array(embed_model.encode(f"{title}. {abstract[:300]}"))
@@ -251,7 +257,7 @@ def get_papers(query, original_question, max_results=5):
     query_cache[query] = papers
     return papers
 
-def indexing(topic,question,max_results=3):
+def indexing(topic,question,max_results=5):
     # query = query_construct(topic)
     papers = get_papers(topic,question,max_results)
     saved = 0
@@ -265,19 +271,27 @@ def indexing(topic,question,max_results=3):
         small = distill(p['summary'])
         full_text = f"{p['title']}. {p['summary']}"
         embedding = embed_model.encode(small).tolist()
-        temp_store.add(
-            documents=[full_text],
-            embeddings=[embedding],
-            metadatas=[{
+        meta = {
                 "title": p["title"],
                 "authors": ", ".join(p["authors"][:3]),
                 "citations": str(p.get("citations", 0)),
                 "year": str(p.get("year", "")),
                 "link" : p['link']
-            }],
+            }
+        temp_store.add(
+            documents=[full_text],
+            embeddings=[embedding],
+            metadatas=[meta],
             ids=[uid]
         )
-        saved += 1
+        if not perm_store.get(ids=[uid])['ids']:
+            perm_store.add(
+                documents=[full_text],
+                embeddings=[embedding],
+                metadatas=[meta],
+                ids=[uid]
+            )
+            saved += 1
     st.write(f"Stored {saved} new papers in store.")
 
 def retrival(query, n_res=5):
@@ -295,7 +309,7 @@ def retrival(query, n_res=5):
 
 def multi_query_generation(question, n=3):
     prompt = f"""You are an AI research assistant. Given a question, generate {n} different
-    search queries to find relevant papers on arXiv.
+    search queries to find relevant papers.
 
     Each query should be 3-6 plain keywords, no quotes, no site: operators, no numbering.
     Return ONLY the queries, one per line.
@@ -340,6 +354,7 @@ def reciprocal_rank_fusion(results_list, k=60):
 def fusion_retrival(question, n=3):
     st.write("⚖️ Grading relevance & fusing results...")
     queries = multi_query_generation(question,n)
+    # queries.append(question)
     all_context = []
     for query in queries:
         indexing(query,question)
@@ -386,7 +401,7 @@ if "total_queries" not in st.session_state:
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("## ⚗️ ArXiv Agent")
+    st.markdown("## ⚗️ Research Agent")
     st.markdown("<p style='color:#44445a;font-size:12px;margin-top:-10px;font-family:Space Mono'>RAG + CRAG + Fusion</p>", unsafe_allow_html=True)
     st.divider()
 
@@ -459,7 +474,7 @@ with st.sidebar:
         """, unsafe_allow_html=True)
 
 # ── Main Area ─────────────────────────────────────────────────────────────────
-st.markdown('<div class="hero-title">ArXiv Research Agent</div>', unsafe_allow_html=True)
+st.markdown('<div class="hero-title">Research Agent</div>', unsafe_allow_html=True)
 st.markdown('<div class="hero-sub">multi-query · rag fusion · crag · multi-representation</div>', unsafe_allow_html=True)
 
 # How it works expander
@@ -467,7 +482,7 @@ with st.expander("⚙️ How this works"):
     st.markdown("""
     <div style="font-size:14px;color:#888899;line-height:1.8">
         <span class="step-badge">1</span> Your question is <b style="color:#c0b8f5">rewritten into 5 search queries</b> from different angles<br>
-        <span class="step-badge">2</span> Each query <b style="color:#c0b8f5">fetches papers from arXiv</b> and indexes them with distilled embeddings<br>
+        <span class="step-badge">2</span> Each query <b style="color:#c0b8f5">fetches papers from Research Database</b> and indexes them with distilled embeddings<br>
         <span class="step-badge">3</span> Retrieved papers are <b style="color:#c0b8f5">graded for relevance</b> — irrelevant ones are filtered, partial ones are distilled<br>
         <span class="step-badge">4</span> <b style="color:#c0b8f5">Reciprocal Rank Fusion</b> merges all result sets into one ranked list<br>
         <span class="step-badge">5</span> Top papers become context for <b style="color:#c0b8f5">cited answer generation</b>
@@ -491,7 +506,7 @@ for msg in st.session_state.messages:
                     seen.add(s)
                     label = s[:55] + "..." if len(s) > 55 else s
                     if link:
-                        chips += f'<a href="{link}" target="_blank" style="text-decoration:none"><span class="source-chip">📄 {label}</span></a>'
+                        chips += f'<a href="{link}" target="_blank" style="text-decoration:none;cursor:pointer"><span class="source-chip">📄 {label}</span></a>'
                     else:
                         chips += f'<span class="source-chip">📄 {label}</span>'
             st.markdown(f'<div class="source-row">{chips}</div>', unsafe_allow_html=True)
@@ -516,14 +531,13 @@ if question:
     if False:
         st.error("⚠️ Please enter your Groq API key in the sidebar first.")
     else:
-        # st.session_state.temp_store = VectorStore()
-        # temp_store = st.session_state.temp_store
-        # query_cache.clear()
+        st.session_state.temp_store = VectorStore()
+        temp_store = st.session_state.temp_store
         st.session_state.messages.append({"role": "user", "content": question})
         st.session_state.total_queries += 1
         st.markdown(f'<div class="user-msg">💻&nbsp;&nbsp;{question}</div>', unsafe_allow_html=True)
 
-        with st.status("Researching arXiv...", expanded=True) as status:
+        with st.status("Researching database...", expanded=True) as status:
             # st.write("🔍 Generating search queries...")
             # queries = multi_query_generation(question)
             #
