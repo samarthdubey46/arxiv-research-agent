@@ -23,7 +23,7 @@ Your question
 Multi-query generation  ──  LLM rewrites into 5 different search queries
      │
      ▼
-arXiv API  ──  fetches up to 5 papers per query
+Research Paper Database API  ──  fetches up to 5 papers per query
      │
      ▼
 Multi-representation indexing  ──  papers embedded as distilled summaries, stored as full text
