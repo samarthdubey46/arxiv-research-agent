@@ -2,7 +2,6 @@ import streamlit as st
 from sentence_transformers import SentenceTransformer
 import numpy
 import hashlib
-import time
 from openai import OpenAI
 import os
 import xml.etree.ElementTree as ET
@@ -13,6 +12,7 @@ groq_key = os.environ.get("GROQ_API_KEY", "")
 if groq_key == "":
     try:
         from keys import groq_key
+        print("Using local key")
     except Exception as e:
         print("Please set GROQ_API_KEY environment variable")
 # ── Page Config ───────────────────────────────────────────────────────────────
@@ -23,7 +23,12 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-LLM_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+# Groq retired Llama 4 Scout on July 17, 2026. Use a faster production model
+# by default while allowing deployments to override it.
+LLM_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-20b")
+SEARCH_QUERY_COUNT = int(os.environ.get("SEARCH_QUERY_COUNT", "2"))
+PAPERS_PER_QUERY = int(os.environ.get("PAPERS_PER_QUERY", "3"))
+ANSWER_SOURCE_COUNT = int(os.environ.get("ANSWER_SOURCE_COUNT", "4"))
 
 
 # simple in-memory vector store
@@ -180,21 +185,27 @@ temp_store = st.session_state.perm_store
 embed_model = load_embed_model()
 query_cache = st.session_state.query_cache
 # ── LLM Helper ────────────────────────────────────────────────────────────────
+@st.cache_resource
 def get_llm():
     return OpenAI(api_key=groq_key, base_url="https://api.groq.com/openai/v1")
 
 def ask(prompt):
     llm = get_llm()
+    request_options = {}
+    if LLM_MODEL.startswith("openai/gpt-oss-"):
+        request_options["reasoning_effort"] = "low"
     resp = llm.chat.completions.create(
         model=LLM_MODEL,
-        messages=[{"role": "user", "content": prompt}]
+        messages=[{"role": "user", "content": prompt}],
+        **request_options
     )
     return resp.choices[0].message.content
 
 # ── RAG Pipeline ──────────────────────────────────────────────────────────────
-def get_papers(query, original_question, max_results=5):
-    if query in query_cache:
-        return query_cache[query]
+def get_papers(query, original_question, max_results=PAPERS_PER_QUERY):
+    cache_key = (query, original_question, max_results)
+    if cache_key in query_cache:
+        return query_cache[cache_key]
 
     resp = requests.get("https://api.openalex.org/works", params={
         "search": query,
@@ -202,12 +213,11 @@ def get_papers(query, original_question, max_results=5):
         "select": "title,abstract_inverted_index,authorships,publication_year,open_access,cited_by_count,primary_location"
     }, headers={"User-Agent": "ResearchAgent/1.0 (samarthdubey46@gmail.com)"}, timeout=30)
 
-    time.sleep(0.5)
+    resp.raise_for_status()
     data = resp.json()
     results = data.get("results", [])
 
-    question_vec = np.array(embed_model.encode(original_question))
-    papers = []
+    candidates = []
 
     for p in results:
         title = p.get("title") or ""
@@ -238,39 +248,46 @@ def get_papers(query, original_question, max_results=5):
             work_id = p.get("id", "")  # looks like https://openalex.org/W123456
             pdf_url = work_id
 
-        # cosine similarity filter
-        paper_vec = np.array(embed_model.encode(f"{title}. {abstract[:300]}"))
-        score = np.dot(question_vec, paper_vec) / (
-            np.linalg.norm(question_vec) * np.linalg.norm(paper_vec) + 1e-9
-        )
+        candidates.append({
+            "title": title,
+            "summary": abstract,
+            "authors": authors,
+            "year": year,
+            "citations": citations,
+            "link": pdf_url
+        })
 
-        if score > 0.25:
-            papers.append({
-                "title": title,
-                "summary": abstract,
-                "authors": authors,
-                "year": year,
-                "citations": citations,
-                "link": pdf_url
-            })
+    if not candidates:
+        query_cache[cache_key] = []
+        return []
 
-    query_cache[query] = papers
+    question_vec = embed_model.encode(original_question, normalize_embeddings=True)
+    paper_vecs = embed_model.encode(
+        [f"{paper['title']}. {paper['summary'][:300]}" for paper in candidates],
+        normalize_embeddings=True
+    )
+    scores = paper_vecs @ question_vec
+    papers = [paper for paper, score in zip(candidates, scores) if score > 0.25]
+
+    query_cache[cache_key] = papers
     return papers
 
-def indexing(topic,question,max_results=5):
+def indexing(topic, question, max_results=PAPERS_PER_QUERY):
     # query = query_construct(topic)
-    papers = get_papers(topic,question,max_results)
+    papers = get_papers(topic, question, max_results)
+    new_papers = []
+    for paper in papers:
+        uid = hashlib.md5(paper['title'].encode()).hexdigest()
+        if not temp_store.get(ids=[uid])['ids']:
+            new_papers.append((uid, paper))
+
+    texts = [f"{paper['title']}. {paper['summary']}" for _, paper in new_papers]
+    embeddings = (
+        embed_model.encode(texts, normalize_embeddings=True).tolist()
+        if texts else []
+    )
     saved = 0
-    for p in papers:
-        uid = hashlib.md5(p['title'].encode()).hexdigest()
-        try:
-            if temp_store.get(ids=[uid])['ids']:
-                continue
-        except Exception:
-            pass
-        small = distill(p['summary'])
-        full_text = f"{p['title']}. {p['summary']}"
-        embedding = embed_model.encode(small).tolist()
+    for (uid, p), full_text, embedding in zip(new_papers, texts, embeddings):
         meta = {
                 "title": p["title"],
                 "authors": ", ".join(p["authors"][:3]),
@@ -299,7 +316,7 @@ def retrival(query, n_res=5):
     if count == 0:
         return []
     n_res = min(n_res, count)
-    embedded = embed_model.encode(query).tolist()
+    embedded = embed_model.encode(query, normalize_embeddings=True).tolist()
     res = temp_store.query(query_embeddings=[embedded], n_results=n_res)
     docs = res['documents'][0]
     titles = [m["title"] for m in res['metadatas'][0]]
@@ -319,29 +336,7 @@ def multi_query_generation(question, n=3):
     print("Multi-query generation completed")
     queries = resp.split('\n')
     queries = [q.strip() for q in queries if q.strip()]  # remove empty lines
-    return queries
-
-def grade(question, doc):
-    prompt = f"""You are grading whether a research paper DIRECTLY answers a question.
-
-    Question: {question}
-    Document: {doc[:400]}
-
-    Grade strictly:
-    1 - Paper directly and specifically addresses the question
-    2 - Paper is loosely related but doesn't directly answer it  
-    3 - Paper is irrelevant or only tangentially related
-
-    Return ONLY the digit 1, 2, or 3."""
-    try:
-        result = ask(prompt).strip().strip('.')[0]
-        return int(result)
-    except Exception:
-        return 1
-
-def distill(text):
-    return ask(f"""Distill the following research paper summary into 3-4 sentences capturing only the core idea, key method, and main finding. Return only the distilled summary, no preamble.
-    Summary: {text}""")
+    return queries[:n] or [question]
 
 def reciprocal_rank_fusion(results_list, k=60):
     scores = {}
@@ -351,22 +346,14 @@ def reciprocal_rank_fusion(results_list, k=60):
             scores[key] = scores.get(key, 0) + 1 / (rank + k)
     return sorted(scores, key=scores.get, reverse=True)
 
-def fusion_retrival(question, n=3):
-    st.write("⚖️ Grading relevance & fusing results...")
-    queries = multi_query_generation(question,n)
-    # queries.append(question)
+def fusion_retrival(question, n=ANSWER_SOURCE_COUNT):
+    st.write("🔍 Searching and ranking papers...")
+    queries = multi_query_generation(question, SEARCH_QUERY_COUNT)[:SEARCH_QUERY_COUNT]
     all_context = []
     for query in queries:
-        indexing(query,question)
+        indexing(query, question)
         retrieved = retrival(query)
-        temp = []
-        for title, doc,link in retrieved:
-            relevance = grade(question, doc)
-            if relevance == 1:
-                temp.append((title, doc,link))
-            elif relevance == 2:
-                temp.append((title, distill(doc),link))
-        all_context.append(temp)
+        all_context.append(retrieved)
     ranked = reciprocal_rank_fusion(all_context)
     return ranked[:n]
 
